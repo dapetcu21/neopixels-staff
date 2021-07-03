@@ -3,37 +3,44 @@
   #include <avr/power.h>
 #endif
 #include <math.h>
+#include <EEPROM.h>
 
 #define BUTTON_PIN PIN_PB2
 #define LEDS_PIN PIN_PB4
-
 #define NUMPIXELS 16
+
 #define DELAYVAL 500
 #define LONG_PRESS_DELAY 1500
 #define SEQUENCE_DELAY 500
 #define DEBOUNCE_DELAY 50
 #define MAX_PATTERNS 10
-#define FADE_DELAY 1000
 #define MOMENTARY_DELAY 3000
+#define JITTER_SPEED 0.0005
+#define FADE_SPEED 0.001
+#define POWEROFF_SPEED 0.001
+#define EEPROM_VERSION 0x42
 
-// 2.8 gamma correction
+#define DEFAULT_BRIGHTNESS 0.3f
+#define DEFAULT_JITTER 0.4f
+
+// 2.6 gamma correction
 const uint8_t PROGMEM gamma8[] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2,
-    2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5,
-    5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10,
-    10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16,
-    17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 24, 24, 25,
-    25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36,
-    37, 38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50,
-    51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68,
-    69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
-    90, 92, 93, 95, 96, 98, 99, 101, 102, 104, 105, 107, 109, 110, 112, 114,
-    115, 117, 119, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 138, 140, 142,
-    144, 146, 148, 150, 152, 154, 156, 158, 160, 162, 164, 167, 169, 171, 173, 175,
-    177, 180, 182, 184, 186, 189, 191, 193, 196, 198, 200, 203, 205, 208, 210, 213,
-    215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  1,  1,
+  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,
+  3,  3,  4,  4,  4,  4,  5,  5,  5,  5,  5,  6,  6,  6,  6,  7,
+  7,  7,  8,  8,  8,  9,  9,  9, 10, 10, 10, 11, 11, 11, 12, 12,
+  13, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19, 20,
+  20, 21, 21, 22, 22, 23, 24, 24, 25, 25, 26, 27, 27, 28, 29, 29,
+  30, 31, 31, 32, 33, 34, 34, 35, 36, 37, 38, 38, 39, 40, 41, 42,
+  42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57,
+  58, 59, 60, 61, 62, 63, 64, 65, 66, 68, 69, 70, 71, 72, 73, 75,
+  76, 77, 78, 80, 81, 82, 84, 85, 86, 88, 89, 90, 92, 93, 94, 96,
+  97, 99,100,102,103,105,106,108,109,111,112,114,115,117,119,120,
+  122,124,125,127,129,130,132,134,136,137,139,141,143,145,146,148,
+  150,152,154,156,158,160,162,164,166,168,170,172,174,176,178,180,
+  182,184,186,188,191,193,195,197,199,202,204,206,209,211,213,215,
+  218,220,223,225,227,230,232,235,237,240,242,245,247,250,252,255
 };
 
 #define gamma(x) (pgm_read_byte(&gamma8[(int)(x)]))
@@ -59,9 +66,20 @@ tinyNeoPixel pixels(NUMPIXELS, LEDS_PIN, NEO_GRB + NEO_KHZ800, pixel_buffer);
 struct Pattern {
   byte r = 255, g = 255, b = 255;
   byte ar = 255, ag = 255, ab = 255;
-  float brightness = 0.5f;
-  float jitter = 1.0f;
-  float speed = 1.0f;
+  float brightness = DEFAULT_BRIGHTNESS;
+  float jitter = DEFAULT_JITTER;
+
+  void blend(const Pattern &o, float mix) {
+    float mix1 = 1.0f - mix;
+    r = (byte)((float)r * mix1 + (float)o.r * mix);
+    g = (byte)((float)g * mix1 + (float)o.g * mix);
+    b = (byte)((float)b * mix1 + (float)o.b * mix);
+    ar = (byte)((float)ar * mix1 + (float)o.ar * mix);
+    ag = (byte)((float)ag * mix1 + (float)o.ag * mix);
+    ab = (byte)((float)ab * mix1 + (float)o.ab * mix);
+    brightness = brightness * mix1 + o.brightness * mix;
+    jitter = jitter * mix1 + o.jitter * mix;
+  }
 } patterns[MAX_PATTERNS];
 
 enum SettingsStage {
@@ -70,16 +88,19 @@ enum SettingsStage {
   settingBrightness,
   settingJitter,
   settingAccent,
-  settingSpeed,
 };
 
 struct MenuState {
   int currentPattern = 1;
+  int lastPattern = 1;
   bool powerOn = false;
   SettingsStage settingsStage = idle;
   unsigned long settingsEnterTime = 0;
-  unsigned long lastTime = 0;
-  unsigned long cursor = 0;
+  unsigned long time = 0;
+  unsigned long dt = 0;
+  double animationCursor = 0.0f;
+  double fadeCursor = 0.0f;
+  double powerOffCursor = 0.0f;
 } menu;
 
 struct InputState {
@@ -125,8 +146,12 @@ void setPower(bool enabled) {
 void setCurrentPattern(int patternIndex) {
   setPower(true);
   if (menu.currentPattern == patternIndex) return;
+  menu.lastPattern = menu.currentPattern;
   menu.currentPattern = patternIndex;
+  menu.fadeCursor = 1.0;
 }
+
+void saveToEEPROM();
 
 void cycleSettingStages() {
   menu.settingsEnterTime = millis();
@@ -145,16 +170,14 @@ void cycleSettingStages() {
       menu.settingsStage = settingAccent;
       break;
     case settingAccent:
-      menu.settingsStage = settingSpeed;
-      break;
-    case settingSpeed:
-      // TODO: Save settings here
+      saveToEEPROM();
       menu.settingsStage = idle;
       break;
   }
 }
 
 void onButtonPress() {
+  
 }
 
 void cancelInput() {
@@ -247,28 +270,35 @@ void buttonInterrupt() {
 }
 
 float lerp(float x, float y, float a) {
-  return x * a + y * (1.0f - a);
+  return x * (1.0f - a) + y * a;
 }
 
 void renderPattern(const struct Pattern& p); // Compiler bug requires me to have this?
 
 void renderPattern(const struct Pattern& p) {
-  unsigned long time = millis();
-  menu.cursor = fmod(menu.cursor + (float)(time - menu.lastTime) * 0.0005f * p.speed, 60.0f);
+  menu.animationCursor = fmod(menu.animationCursor + (double)menu.dt * JITTER_SPEED, 60.0);
+
+  float animationCursorf = (float)menu.animationCursor;
+  float animationCursor6 = animationCursorf * 6.0f;
+  float animationCursor10 = animationCursorf * 10.0f;
+
+  float jitterBase = 0.5f * p.jitter;
+  float jitterScale = 0.25f * p.jitter;
 
   pixels.clear();
   for (int i=0; i<NUMPIXELS; i++) {
     float fi = (float)i;
-    float variance = 0.5f * (
-      sin(menu.cursor * 6.0f + 0.1f * fi * fi) + 
-      sin(menu.cursor * 10.0f + fi)
+    float jitter = jitterBase + jitterScale * (
+      sin(animationCursor6 + 0.1f * fi * fi) + 
+      sin(animationCursor10 + fi)
     );
-    float mix = 1.0f - p.jitter * (variance * 0.5f + 0.5f);
+    float mix = 1.0f - jitter;
     float alpha = mix * p.brightness;
+    
     pixels.setPixelColor(i, pixels.Color(
-      gamma(lerp(p.ar, p.r, mix) * alpha),
-      gamma(lerp(p.ag, p.g, mix) * alpha),
-      gamma(lerp(p.ab, p.b, mix) * alpha)
+      gamma((p.ar * jitter + p.r * mix) * alpha),
+      gamma((p.ag * jitter + p.g * mix) * alpha),
+      gamma((p.ab * jitter + p.b * mix) * alpha)
     ));
   }
   pixels.show();
@@ -302,32 +332,41 @@ void renderSetAccent() {
   renderPattern(p);
 }
 
-float withDefault(float x, float defaultValue) {
+double withDefault(double x, double defaultValue, double from, double to) {
   if (x < 0.1f) return defaultValue;
-  return (x - 0.1f) * (1.0f / 0.9f);
+  return from + (x - 0.1f) * (1.0f / 0.9f) * (to - from);
 }
 
 void renderSetBrightness() {
   Pattern &p = patterns[menu.currentPattern];
-  p.brightness = withDefault(getSettingValue(5000.0), 0.5f);
+  p.brightness = withDefault(getSettingValue(10000.0), DEFAULT_BRIGHTNESS, 0.0, 1.0);
   renderPattern(p);
 }
 
 void renderSetJitter() {
   Pattern &p = patterns[menu.currentPattern];
-  p.jitter = withDefault(getSettingValue(5000.0), 0.5f);
-  renderPattern(p);
-}
-
-void renderSetSpeed() {
-  Pattern &p = patterns[menu.currentPattern];
-  p.speed = withDefault(getSettingValue(5000.0), 1.0f);
+  p.jitter = withDefault(getSettingValue(10000.0), DEFAULT_JITTER, 0.0, 1.0);
   renderPattern(p);
 }
 
 void renderBlank() {
   pixels.clear();
   pixels.show();
+}
+
+void loadFromEEPROM() {
+  if (EEPROM.read(0) == EEPROM_VERSION) {
+    for (size_t i = 0; i < sizeof(patterns); i += 1) {
+      ((byte*)patterns)[i] = EEPROM.read(i + 1);
+    }
+  }
+}
+
+void saveToEEPROM() {
+  EEPROM.write(0, EEPROM_VERSION);
+  for (size_t i = 0; i < sizeof(patterns); i += 1) {
+    EEPROM.write(i + 1, ((byte*)patterns)[i]);
+  }
 }
 
 void setup() {
@@ -338,24 +377,48 @@ void setup() {
   pinMode(LEDS_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  // TODO: Load settings
+  menu.time = millis();
+  loadFromEEPROM();
 
   resetInputState();
 //  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonInterrupt, CHANGE);
 }
 
 void loop() {
+  unsigned long time = millis();
+  menu.dt = time - menu.time;
+  menu.time = time;
+
+  if (menu.powerOn) {
+    if (menu.powerOffCursor != 1.0) {
+      menu.powerOffCursor = min(1.0, menu.powerOffCursor + menu.dt * POWEROFF_SPEED);
+    }    
+  } else {
+    if (menu.powerOffCursor != 0.0) {
+      menu.powerOffCursor = max(0.0, menu.powerOffCursor - menu.dt * POWEROFF_SPEED);
+    }
+  }
+
+  if (menu.fadeCursor != 0.0) {
+    menu.fadeCursor = max(0.0, menu.fadeCursor - menu.dt * FADE_SPEED);
+  }
+  
   checkButtonState();
   updateTimer();
   
   switch (menu.settingsStage) {
     case idle: {
-      // TODO: Pattern blending
-      if (!menu.powerOn) {
+      if (menu.powerOffCursor == 0.0) {
         renderBlank();
         return;
       }
       Pattern p = patterns[menu.currentPattern];
+
+      if (menu.fadeCursor != 0.0) {
+        p.blend(patterns[menu.lastPattern], menu.fadeCursor);
+      }
+      p.brightness *= menu.powerOffCursor;
+
       renderPattern(p);
       break;
     }
@@ -373,10 +436,6 @@ void loop() {
     }
     case settingAccent: {
       renderSetAccent();
-      break;
-    }
-    case settingSpeed: {
-      renderSetSpeed();
       break;
     }
   }
