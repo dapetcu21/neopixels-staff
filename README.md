@@ -19,7 +19,6 @@ See the pin definitions in the sketch's header before wiring it up. Also don't f
 
 * Arduino IDE
 * https://github.com/SpenceKonde/ATTinyCore
-* ~https://github.com/StoykoDimitrov/TimerOne~ Not used anymore?
 
 ## Usage:
 
