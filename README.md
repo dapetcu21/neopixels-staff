@@ -33,5 +33,11 @@ If you long press and keep pressing, when you release it will switch back from p
 (To achieve a momentary effect)
 
 To configure the current pattern, quick press, then long press. 
-It will start cycling through different settings (hue, brightness, jitter, etc). 
+It will start cycling through different settings. 
 Single quick press to commit to a setting and move to the next one.
+
+The settings are, in order:
+1. Main color: Select from hue wheel or white.
+2. Brightness: Select between a default of 30% or a custom value.
+3. Animation intensity (jitter): Select from a default of 40% or a custom value.
+4. Animation accent color: Select from: main color, hue wheel or white.
