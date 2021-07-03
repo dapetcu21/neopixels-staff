@@ -59,7 +59,7 @@ tinyNeoPixel pixels(NUMPIXELS, LEDS_PIN, NEO_GRB + NEO_KHZ800, pixel_buffer);
 struct Pattern {
   byte r = 255, g = 255, b = 255;
   byte ar = 255, ag = 255, ab = 255;
-  float brightness = 0.5f
+  float brightness = 0.5f;
   float jitter = 1.0f;
   float speed = 1.0f;
 } patterns[MAX_PATTERNS];
@@ -260,15 +260,15 @@ void renderPattern(const struct Pattern& p) {
   for (int i=0; i<NUMPIXELS; i++) {
     float fi = (float)i;
     float variance = 0.5f * (
-      fsin(menu.cursor * 6.0f + 0.1f * fi * fi) + 
-      fsin(menu.cursor * 10.0f + fi)
+      sin(menu.cursor * 6.0f + 0.1f * fi * fi) + 
+      sin(menu.cursor * 10.0f + fi)
     );
     float mix = 1.0f - p.jitter * (variance * 0.5f + 0.5f);
-    float alpha = mix * brightness;
+    float alpha = mix * p.brightness;
     pixels.setPixelColor(i, pixels.Color(
       gamma(lerp(p.ar, p.r, mix) * alpha),
       gamma(lerp(p.ag, p.g, mix) * alpha),
-      gamma(lerp(p.ab, p.b, mix) * alpha),
+      gamma(lerp(p.ab, p.b, mix) * alpha)
     ));
   }
   pixels.show();
@@ -294,7 +294,7 @@ void renderSetAccent() {
     p.ar = p.r;
     p.ag = p.g;
     p.ab = p.b;
-  else if (hue > 360.0 + 60.0) {
+  } else if (hue > 360.0 + 60.0) {
     p.ar = p.ag = p.ab = 255;
   } else {
     hueToColor(hue - 60.0, p.ar, p.ag, p.ab);
@@ -353,7 +353,7 @@ void loop() {
       // TODO: Pattern blending
       if (!menu.powerOn) {
         renderBlank();
-        return
+        return;
       }
       Pattern p = patterns[menu.currentPattern];
       renderPattern(p);
