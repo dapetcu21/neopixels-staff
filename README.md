@@ -13,7 +13,7 @@ This is an Arduino sketch for a glowy LARP staff.
 
 [adafruit-guide]: https://learn.adafruit.com/adafruit-neopixel-uberguide/powering-neopixels
 
-See the pin definitions in the sketch's header before wiring it up.
+See the pin definitions in the sketch's header before wiring it up. Also don't forget to connect RESET to VCC.
 
 ## Software:
 
