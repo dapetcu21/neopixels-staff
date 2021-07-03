@@ -1,5 +1,4 @@
 #include <tinyNeoPixel_Static.h>
-#include <TimerOne.h>
 #ifdef __AVR__
   #include <avr/power.h>
 #endif
@@ -59,21 +58,28 @@ tinyNeoPixel pixels(NUMPIXELS, LEDS_PIN, NEO_GRB + NEO_KHZ800, pixel_buffer);
 
 struct Pattern {
   byte r = 255, g = 255, b = 255;
-  float brightness = 0.5f, jitter = 1.0f;
+  byte ar = 255, ag = 255, ab = 255;
+  float brightness = 0.5f
+  float jitter = 1.0f;
+  float speed = 1.0f;
 } patterns[MAX_PATTERNS];
 
 enum SettingsStage {
   idle,
-  settingHue,
+  settingTint,
   settingBrightness,
   settingJitter,
-  numStages,
+  settingAccent,
+  settingSpeed,
 };
 
 struct MenuState {
   int currentPattern = 1;
   bool powerOn = false;
   SettingsStage settingsStage = idle;
+  unsigned long settingsEnterTime = 0;
+  unsigned long lastTime = 0;
+  unsigned long cursor = 0;
 } menu;
 
 struct InputState {
@@ -123,17 +129,26 @@ void setCurrentPattern(int patternIndex) {
 }
 
 void cycleSettingStages() {
+  menu.settingsEnterTime = millis();
   switch (menu.settingsStage) {
     case idle:
-      menu.settingsStage = settingHue;
+      menu.settingsStage = settingTint;
+      patterns[menu.currentPattern] = Pattern();
       break;
-    case settingHue:
+    case settingTint:
       menu.settingsStage = settingBrightness;
       break;
     case settingBrightness:
       menu.settingsStage = settingJitter;
       break;
     case settingJitter:
+      menu.settingsStage = settingAccent;
+      break;
+    case settingAccent:
+      menu.settingsStage = settingSpeed;
+      break;
+    case settingSpeed:
+      // TODO: Save settings here
       menu.settingsStage = idle;
       break;
   }
@@ -231,6 +246,90 @@ void buttonInterrupt() {
   checkButtonState();
 }
 
+float lerp(float x, float y, float a) {
+  return x * a + y * (1.0f - a);
+}
+
+void renderPattern(const struct Pattern& p); // Compiler bug requires me to have this?
+
+void renderPattern(const struct Pattern& p) {
+  unsigned long time = millis();
+  menu.cursor = fmod(menu.cursor + (float)(time - menu.lastTime) * 0.0005f * p.speed, 60.0f);
+
+  pixels.clear();
+  for (int i=0; i<NUMPIXELS; i++) {
+    float fi = (float)i;
+    float variance = 0.5f * (
+      fsin(menu.cursor * 6.0f + 0.1f * fi * fi) + 
+      fsin(menu.cursor * 10.0f + fi)
+    );
+    float mix = 1.0f - p.jitter * (variance * 0.5f + 0.5f);
+    float alpha = mix * brightness;
+    pixels.setPixelColor(i, pixels.Color(
+      gamma(lerp(p.ar, p.r, mix) * alpha),
+      gamma(lerp(p.ag, p.g, mix) * alpha),
+      gamma(lerp(p.ab, p.b, mix) * alpha),
+    ));
+  }
+  pixels.show();
+}
+
+#define getSettingValue(period) modf((double)(millis() - menu.settingsEnterTime) * (1.0 / (period)), NULL)
+
+void renderSetTint() {
+  Pattern &p = patterns[menu.currentPattern];
+  double hue = getSettingValue(10000.0) * (360.0 + 60.0);
+  if (hue > 360.0) {
+    p.r = p.g = p.b = 255;
+  } else {
+    hueToColor(hue, p.r, p.g, p.b);
+  }
+  renderPattern(p);
+}
+
+void renderSetAccent() {
+  Pattern &p = patterns[menu.currentPattern];
+  double hue = getSettingValue(10000.0) * (60.0 + 360.0 + 60.0);
+  if (hue <= 60.0) {
+    p.ar = p.r;
+    p.ag = p.g;
+    p.ab = p.b;
+  else if (hue > 360.0 + 60.0) {
+    p.ar = p.ag = p.ab = 255;
+  } else {
+    hueToColor(hue - 60.0, p.ar, p.ag, p.ab);
+  }
+  renderPattern(p);
+}
+
+float withDefault(float x, float defaultValue) {
+  if (x < 0.1f) return defaultValue;
+  return (x - 0.1f) * (1.0f / 0.9f);
+}
+
+void renderSetBrightness() {
+  Pattern &p = patterns[menu.currentPattern];
+  p.brightness = withDefault(getSettingValue(5000.0), 0.5f);
+  renderPattern(p);
+}
+
+void renderSetJitter() {
+  Pattern &p = patterns[menu.currentPattern];
+  p.jitter = withDefault(getSettingValue(5000.0), 0.5f);
+  renderPattern(p);
+}
+
+void renderSetSpeed() {
+  Pattern &p = patterns[menu.currentPattern];
+  p.speed = withDefault(getSettingValue(5000.0), 1.0f);
+  renderPattern(p);
+}
+
+void renderBlank() {
+  pixels.clear();
+  pixels.show();
+}
+
 void setup() {
 #if defined(__AVR_ATtiny85__) && (F_CPU == 16000000)
   clock_prescale_set(clock_div_1);
@@ -238,66 +337,30 @@ void setup() {
   
   pinMode(LEDS_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  pinMode(PIN_PB3, OUTPUT);
 
-  Timer1.initialize();
+  // TODO: Load settings
 
   resetInputState();
-  checkButtonState();
 //  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonInterrupt, CHANGE);
-}
-
-void renderPattern(const struct Pattern& p); // Compiler bug requires me to have this?
-
-void renderPattern(const struct Pattern& p) {
-  pixels.clear();
-  for (int i=0; i<NUMPIXELS; i++) {
-    float value = p.brightness;
-    pixels.setPixelColor(i, pixels.Color(
-      gamma(p.r * value),
-      gamma(p.g * value),
-      gamma(p.b * value)
-    ));
-  }
-  pixels.show();
-}
-
-void renderSetHue() {
-  Pattern &p = patterns[menu.currentPattern];
-  double hue = modf((double)millis() / 5000.0, NULL) * 360.0;
-  hueToColor(hue, p.r, p.g, p.b);
-  renderPattern(p);
-}
-
-void renderSetBrightness() {
-  Pattern &p = patterns[menu.currentPattern];
-  p.brightness = modf((double)millis() / 5000.0, NULL);
-  renderPattern(p);
-}
-
-void renderSetJitter() {
-  Pattern &p = patterns[menu.currentPattern];
-  p.jitter = modf((double)millis() / 5000.0, NULL);
-  renderPattern(p);
 }
 
 void loop() {
   checkButtonState();
   updateTimer();
   
-  digitalWrite(PIN_PB3, digitalRead(BUTTON_PIN));
-  
   switch (menu.settingsStage) {
     case idle: {
-      Pattern p = patterns[menu.currentPattern];
+      // TODO: Pattern blending
       if (!menu.powerOn) {
-        p.brightness = 0.0f;
+        renderBlank();
+        return
       }
+      Pattern p = patterns[menu.currentPattern];
       renderPattern(p);
       break;
     }
-    case settingHue: {
-      renderSetHue();
+    case settingTint: {
+      renderSetTint();
       break;
     }
     case settingBrightness: {
@@ -308,6 +371,15 @@ void loop() {
       renderSetJitter();
       break;
     }
+    case settingAccent: {
+      renderSetAccent();
+      break;
+    }
+    case settingSpeed: {
+      renderSetSpeed();
+      break;
+    }
   }
+
   delay(30);
 }
