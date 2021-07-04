@@ -20,13 +20,6 @@ See the pin definitions in the sketch's header before wiring it up. Also don't f
 * Arduino IDE
 * https://github.com/SpenceKonde/ATTinyCore
 
-## Demo:
-
-Animation pattern demo: https://www.shadertoy.com/view/flXXzM
-
-[Lit staff](./pics/staff.jpg)
-[Staff with internals out](./pics/staff_internals.jpg)
-
 ## Usage:
 
 Single quick press to power on/off.
@@ -47,3 +40,11 @@ The settings are, in order:
 2. Brightness: Select between a default of 30% or a custom value.
 3. Animation intensity (jitter): Select from a default of 40% or a custom value.
 4. Animation accent color: Select from: main color, hue wheel or white.
+
+## Demo:
+
+Animation pattern demo: https://www.shadertoy.com/view/flXXzM
+
+![Lit staff](./pics/staff.jpg)
+
+![Staff with internals out](./pics/staff_internals.jpg)
