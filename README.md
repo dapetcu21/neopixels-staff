@@ -20,6 +20,13 @@ See the pin definitions in the sketch's header before wiring it up. Also don't f
 * Arduino IDE
 * https://github.com/SpenceKonde/ATTinyCore
 
+## Demo:
+
+Animation pattern demo: https://www.shadertoy.com/view/flXXzM
+
+[Lit staff](./pics/staff.jpg)
+[Staff with internals out](./pics/staff_internals.jpg)
+
 ## Usage:
 
 Single quick press to power on/off.
