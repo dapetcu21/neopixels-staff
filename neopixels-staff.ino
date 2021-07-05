@@ -374,7 +374,7 @@ void renderBatteryMeter() {
 
   for (int i=0; i<NUMPIXELS; i++) {
     float value = max(0.0, min(1.0,
-      batteryUsage * (NUMPIXELS - 1) - (i - 1)
+      batteryUsage * (NUMPIXELS - 1) - (NUMPIXELS - i - 2)
     ));
     value *= 0.2f; // Let's not kill the battery while displaying it
 
