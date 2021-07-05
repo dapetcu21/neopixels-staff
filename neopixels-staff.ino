@@ -7,6 +7,7 @@
 
 #define BUTTON_PIN PIN_PB2
 #define LEDS_PIN PIN_PB4
+#define BAT_METER_ADC A9 // PB3
 #define NUMPIXELS 16
 
 #define DELAYVAL 500
@@ -88,6 +89,7 @@ enum SettingsStage {
   settingBrightness,
   settingJitter,
   settingAccent,
+  batteryMeter,
 };
 
 struct MenuState {
@@ -173,7 +175,14 @@ void cycleSettingStages() {
       saveToEEPROM();
       menu.settingsStage = idle;
       break;
+    case batteryMeter:
+      menu.settingsStage = idle;
+      break;
   }
+}
+
+void enterBatteryMeter() {
+  menu.settingsStage = batteryMeter;
 }
 
 void onButtonPress() {
@@ -217,6 +226,9 @@ void onButtonLongPress() {
   } else if (input.clicks == 1) {
     input.enterSettings = true;
     cycleSettingStages();
+  } else if (input.clicks == 2) {
+    input.enterSettings = true;
+    enterBatteryMeter();
   }
 }
 
@@ -285,7 +297,6 @@ void renderPattern(const struct Pattern& p) {
   float jitterBase = 0.5f * p.jitter;
   float jitterScale = 0.25f * p.jitter;
 
-  pixels.clear();
   for (int i=0; i<NUMPIXELS; i++) {
     float fi = (float)i;
     float jitter = jitterBase + jitterScale * (
@@ -349,6 +360,49 @@ void renderSetJitter() {
   renderPattern(p);
 }
 
+#define BATTERY_VOLTAGE_FULL 4.2
+#define BATTERY_VOLTAGE_EMPTY 2.8
+
+void renderBatteryMeter() {
+  unsigned long adcValue = analogRead(0x0D); // Read internal 1.1V reference relative to VCC
+  double batteryVoltage = (1024.0 * 1.1) / adcValue;
+  double batteryUsage = max(0.0, min(1.0, 
+    (batteryVoltage - BATTERY_VOLTAGE_EMPTY) / 
+    (BATTERY_VOLTAGE_FULL - BATTERY_VOLTAGE_EMPTY)
+  ));
+
+  for (int i=0; i<NUMPIXELS; i++) {
+    float value = max(0.0, min(1.0,
+      batteryUsage * (NUMPIXELS - 1) - (i - 1)
+    ));
+
+    if (i < 2) {
+      pixels.setPixelColor(i, pixels.Color(
+        gamma(255 * value),
+        0,
+        0,
+      ));
+
+    } else if (i >= NUMPIXELS - 2) {
+      pixels.setPixelColor(i, pixels.Color(
+        0,
+        gamma(255 * value),
+        0,
+      ));
+
+    } else {
+      pixels.setPixelColor(i, pixels.Color(
+        gamma(255 * value),
+        gamma(255 * value),
+        0,
+      ));
+
+    }
+  }
+  pixels.show();
+
+}
+
 void renderBlank() {
   pixels.clear();
   pixels.show();
@@ -376,6 +430,8 @@ void setup() {
   
   pinMode(LEDS_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  analogReference(DEFAULT);
 
   menu.time = millis();
   loadFromEEPROM();
