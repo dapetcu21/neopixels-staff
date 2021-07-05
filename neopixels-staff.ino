@@ -423,6 +423,28 @@ void saveToEEPROM() {
   }
 }
 
+void sleep() {
+  // Configure INT0 as pin change interrupt
+  MCUCR |= _BV(ISC00);
+  MCUCR &= ~_BV(ISC01);
+    
+  GIMSK |= _BV(INT0);                     // Enable INT0 interrupt 
+  ADCSRA &= ~_BV(ADEN);                   // ADC off
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);    // replaces above statement
+
+  sleep_enable();                         // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
+  sei();                                  // Enable interrupts
+  sleep_cpu();                            // sleep
+
+  cli();                                  // Disable interrupts
+  sleep_disable();                        // Clear SE bit
+  ADCSRA |= _BV(ADEN);                    // ADC on
+
+  sei();                                  // Enable interrupts
+}
+
+ISR(INT0_vect) {}
+
 void setup() {
 #if defined(__AVR_ATtiny85__) && (F_CPU == 16000000)
   clock_prescale_set(clock_div_1);
@@ -437,7 +459,6 @@ void setup() {
   loadFromEEPROM();
 
   resetInputState();
-//  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonInterrupt, CHANGE);
 }
 
 void loop() {
@@ -466,7 +487,11 @@ void loop() {
     case idle: {
       if (menu.powerOffCursor == 0.0) {
         renderBlank();
-        return;
+        if (!timerCallback) {
+          sleep();
+          return;
+        }
+        break;
       }
       Pattern p = patterns[menu.currentPattern];
 
