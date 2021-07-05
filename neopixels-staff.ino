@@ -1,19 +1,20 @@
 #include <tinyNeoPixel_Static.h>
 #ifdef __AVR__
   #include <avr/power.h>
+  #include <avr/sleep.h>
 #endif
 #include <math.h>
 #include <EEPROM.h>
 
 #define BUTTON_PIN PIN_PB2
 #define LEDS_PIN PIN_PB4
-#define BAT_METER_ADC A9 // PB3
+#define STATUS_PIN PIN_PB0 // Optional LED. Indicates wether the CPU is in sleep mode or not
 #define NUMPIXELS 16
 
 #define DELAYVAL 500
 #define LONG_PRESS_DELAY 1500
 #define SEQUENCE_DELAY 500
-#define DEBOUNCE_DELAY 50
+#define DEBOUNCE_DELAY 30
 #define MAX_PATTERNS 10
 #define MOMENTARY_DELAY 3000
 #define JITTER_SPEED 0.0005
@@ -364,7 +365,7 @@ void renderSetJitter() {
 #define BATTERY_VOLTAGE_EMPTY 2.8
 
 void renderBatteryMeter() {
-  unsigned long adcValue = analogRead(0x0D); // Read internal 1.1V reference relative to VCC
+  unsigned long adcValue = analogRead(12); // Read internal 1.1V reference relative to VCC
   double batteryVoltage = (1024.0 * 1.1) / adcValue;
   double batteryUsage = max(0.0, min(1.0, 
     (batteryVoltage - BATTERY_VOLTAGE_EMPTY) / 
@@ -375,26 +376,27 @@ void renderBatteryMeter() {
     float value = max(0.0, min(1.0,
       batteryUsage * (NUMPIXELS - 1) - (i - 1)
     ));
+    value *= 0.2f; // Let's not kill the battery while displaying it
 
     if (i < 2) {
       pixels.setPixelColor(i, pixels.Color(
         gamma(255 * value),
         0,
-        0,
+        0
       ));
 
     } else if (i >= NUMPIXELS - 2) {
       pixels.setPixelColor(i, pixels.Color(
         0,
         gamma(255 * value),
-        0,
+        0
       ));
 
     } else {
       pixels.setPixelColor(i, pixels.Color(
         gamma(255 * value),
         gamma(255 * value),
-        0,
+        0
       ));
 
     }
@@ -424,23 +426,26 @@ void saveToEEPROM() {
 }
 
 void sleep() {
-  // Configure INT0 as pin change interrupt
-  MCUCR |= _BV(ISC00);
-  MCUCR &= ~_BV(ISC01);
+  digitalWrite(STATUS_PIN, LOW);
+  // Configure INT0 as low level interrupt
+  MCUCR &= ~(_BV(ISC01) | _BV(ISC00));
     
   GIMSK |= _BV(INT0);                     // Enable INT0 interrupt 
   ADCSRA &= ~_BV(ADEN);                   // ADC off
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);    // replaces above statement
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN); 
 
   sleep_enable();                         // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
   sei();                                  // Enable interrupts
+  
   sleep_cpu();                            // sleep
 
   cli();                                  // Disable interrupts
   sleep_disable();                        // Clear SE bit
   ADCSRA |= _BV(ADEN);                    // ADC on
+  GIMSK &= ~_BV(INT0);                    // Disable INT0 interrupt 
 
   sei();                                  // Enable interrupts
+  digitalWrite(STATUS_PIN, HIGH);
 }
 
 ISR(INT0_vect) {}
@@ -452,6 +457,9 @@ void setup() {
   
   pinMode(LEDS_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  pinMode(STATUS_PIN, OUTPUT);
+  digitalWrite(STATUS_PIN, HIGH);
 
   analogReference(DEFAULT);
 
@@ -487,7 +495,7 @@ void loop() {
     case idle: {
       if (menu.powerOffCursor == 0.0) {
         renderBlank();
-        if (!timerCallback) {
+        if (!timerCallback && !menu.powerOn) {
           sleep();
           return;
         }
@@ -517,6 +525,10 @@ void loop() {
     }
     case settingAccent: {
       renderSetAccent();
+      break;
+    }
+    case batteryMeter: {
+      renderBatteryMeter();
       break;
     }
   }
