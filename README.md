@@ -31,7 +31,7 @@ There are 10 pattern slots:
 If you long press and keep pressing, when you release it will switch back from pattern 1 to the previous pattern.
 (To achieve a momentary effect)
 
-To configure the current pattern, quick press, then long press. 
+To configure the current pattern, quick press 3 times, then long press. 
 It will start cycling through different settings. 
 Single quick press to commit to a setting and move to the next one.
 
@@ -40,6 +40,12 @@ The settings are, in order:
 2. Brightness: Select between a default of 30% or a custom value.
 3. Animation intensity (jitter): Select from a default of 40% or a custom value.
 4. Animation accent color: Select from: main color, hue wheel or white.
+
+Quickly pressing once, then long pressing will start a 5 minute timer at the end of which, the staff will power off.
+
+Quickly pressing twice, then long pressing will start a 1 minute timer.
+
+Quickly pressing 2 times will bring up a battery meter.
 
 ## Demo:
 

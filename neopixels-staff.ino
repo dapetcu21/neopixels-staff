@@ -21,6 +21,8 @@
 #define FADE_SPEED 0.001
 #define POWEROFF_SPEED 0.001
 #define EEPROM_VERSION 0x42
+#define SPELL_TIMEOUT_LONG (5L * 60L * 1000L)
+#define SPELL_TIMEOUT_SHORT (1L * 60L * 1000L)
 
 #define DEFAULT_BRIGHTNESS 0.3f
 #define DEFAULT_JITTER 0.4f
@@ -95,7 +97,7 @@ enum SettingsStage {
 
 struct MenuState {
   int currentPattern = 1;
-  int lastPattern = 1;
+  Pattern lastPattern;
   bool powerOn = false;
   SettingsStage settingsStage = idle;
   unsigned long settingsEnterTime = 0;
@@ -125,22 +127,31 @@ void resetInputState() {
 }
 
 typedef void (*TimerCallback)();
-TimerCallback timerCallback = NULL;
-unsigned long timerTarget = 0;
-void setTimer(TimerCallback callback, unsigned long timeout);
-void setTimer(TimerCallback callback, unsigned long timeout) {
-  timerCallback = callback;
-  timerTarget = millis() + timeout;
-}
-void clearTimer() {
-  timerCallback = NULL;
-}
-void updateTimer() {
-  if (timerCallback && millis() >= timerTarget) {
-    timerCallback();
-    timerCallback = NULL;
+struct Timer {
+  TimerCallback callback = NULL;
+  unsigned long target = 0;
+
+  void start(TimerCallback cb, unsigned long timeout) {
+    callback = cb;
+    target = millis() + timeout;
   }
-}
+
+  void clear() {
+    callback = NULL;
+  }
+
+  void update(unsigned long currentTime) {
+    if (callback && currentTime >= target) {
+      TimerCallback cb = callback;
+      callback = NULL;
+      cb();
+    }
+  }
+
+  bool isActive() {
+    return callback != NULL;
+  }
+} buttonTimer, spellTimer;
 
 void setPower(bool enabled) {
   menu.powerOn = enabled;
@@ -149,7 +160,7 @@ void setPower(bool enabled) {
 void setCurrentPattern(int patternIndex) {
   setPower(true);
   if (menu.currentPattern == patternIndex) return;
-  menu.lastPattern = menu.currentPattern;
+  menu.lastPattern = patterns[menu.currentPattern];
   menu.currentPattern = patternIndex;
   menu.fadeCursor = 1.0;
 }
@@ -191,7 +202,7 @@ void onButtonPress() {
 }
 
 void cancelInput() {
-  clearTimer();
+  buttonTimer.clear();
   resetInputState();
 }
 
@@ -219,15 +230,33 @@ void onButtonRelease() {
   }
 }
 
+void onSpellTimeout() {
+  setPower(false);
+}
+
+void startSpellTimer(unsigned int timeout) {
+  spellTimer.start(onSpellTimeout, timeout);
+  menu.lastPattern = patterns[menu.currentPattern];
+  menu.lastPattern.brightness = 1.0;
+  menu.fadeCursor = 1.0;
+  setPower(true);
+}
+
 void onButtonLongPress() {
   if (menu.settingsStage != idle) return;
   if (input.clicks == 0) {
     input.quickAccessReturn = menu.powerOn ? menu.currentPattern : -2;
     setCurrentPattern(0);
   } else if (input.clicks == 1) {
+    startSpellTimer(SPELL_TIMEOUT_LONG);
+    input.enterSettings = true;
+  } else if (input.clicks == 2) {
+    startSpellTimer(SPELL_TIMEOUT_SHORT);
+    input.enterSettings = true;
+  } else if (input.clicks == 3) {
     input.enterSettings = true;
     cycleSettingStages();
-  } else if (input.clicks == 2) {
+  } else if (input.clicks == 4) {
     input.enterSettings = true;
     enterBatteryMeter();
   }
@@ -250,13 +279,13 @@ void onInputStateCommit() {
 }
 
 void commitInputState() {
-  clearTimer();
+  buttonTimer.clear();
   onInputStateCommit();
   resetInputState();
 }
 
 void longPressButton() {
-  clearTimer();
+  buttonTimer.clear();
   input.longPress = true;
   onButtonLongPress();
 }
@@ -269,11 +298,11 @@ void checkButtonState() {
   if (buttonState) {
     input.lastPressTime = millis();
     input.longPress = false;
-    setTimer(longPressButton, LONG_PRESS_DELAY);
+    buttonTimer.start(longPressButton, LONG_PRESS_DELAY);
     onButtonPress();
   } else {
     input.lastReleaseTime = millis();
-    setTimer(commitInputState, SEQUENCE_DELAY);
+    buttonTimer.start(commitInputState, SEQUENCE_DELAY);
     onButtonRelease();
   }
 }
@@ -380,15 +409,15 @@ void renderBatteryMeter() {
 
     if (i < 2) {
       pixels.setPixelColor(i, pixels.Color(
-        gamma(255 * value),
         0,
+        gamma(255 * value),
         0
       ));
 
     } else if (i >= NUMPIXELS - 2) {
       pixels.setPixelColor(i, pixels.Color(
-        0,
         gamma(255 * value),
+        0,
         0
       ));
 
@@ -489,13 +518,14 @@ void loop() {
   }
   
   checkButtonState();
-  updateTimer();
+  spellTimer.update(time);
+  buttonTimer.update(time);
   
   switch (menu.settingsStage) {
     case idle: {
       if (menu.powerOffCursor == 0.0) {
         renderBlank();
-        if (!timerCallback && !menu.powerOn) {
+        if (!buttonTimer.isActive() && !spellTimer.isActive() && !menu.powerOn) {
           sleep();
           return;
         }
@@ -504,7 +534,7 @@ void loop() {
       Pattern p = patterns[menu.currentPattern];
 
       if (menu.fadeCursor != 0.0) {
-        p.blend(patterns[menu.lastPattern], menu.fadeCursor);
+        p.blend(menu.lastPattern, menu.fadeCursor);
       }
       p.brightness *= menu.powerOffCursor;
 
