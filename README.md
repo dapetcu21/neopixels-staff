@@ -41,11 +41,11 @@ The settings are, in order:
 3. Animation intensity (jitter): Select from a default of 40% or a custom value.
 4. Animation accent color: Select from: main color, hue wheel or white.
 
-Quickly pressing once, then long pressing will start a 5 minute timer at the end of which, the staff will power off.
+Quickly pressing once, then long pressing will start a 5 minute timer at the end of which, the staff will power off (useful to know when your spell effect ends).
 
 Quickly pressing twice, then long pressing will start a 1 minute timer.
 
-Quickly pressing 2 times will bring up a battery meter.
+Quickly pressing 3 times, then long pressing will bring up a battery meter.
 
 ## Demo:
 
