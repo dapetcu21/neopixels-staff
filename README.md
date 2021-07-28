@@ -45,7 +45,7 @@ Quickly pressing once, then long pressing will start a 5 minute timer at the end
 
 Quickly pressing twice, then long pressing will start a 1 minute timer.
 
-Quickly pressing 3 times, then long pressing will bring up a battery meter.
+Quickly pressing 4 times, then long pressing will bring up a battery meter.
 
 ## Demo:
 
